@@ -137,7 +137,7 @@ dt[split == 'train', fold := cut(yyyymm %/% 100, breaks = 5, labels = FALSE)]
 dt[split == 'train', .(from = min(yyyymm), to = max(yyyymm)), by = fold][order(fold)] # check the periods
 
 # standardizing regime variables ----------------------
-# turns every regime variable into " how many standard deviations away is it from normal level "
+# turns every regime variable into "how many standard deviations away is it from normal level"
 # only compute mean and sd from training data, so model doesn't "know the future"
 for (v in regime) {
   mu <- dt[split == 'train', mean(get(v), na.rm = TRUE)] # mean in training period
@@ -147,3 +147,40 @@ for (v in regime) {
 
 dt[split == 'train', lapply(.SD, function(x) round(c(mean = mean(x), sd = sd(x)), 2)), .SDcols = regime]
 dt[split == 'test',  lapply(.SD, function(x) round(c(mean = mean(x), sd = sd(x)), 2)), .SDcols = regime]
+
+# model 1 --------------------------------------------
+# baseline logistic regression
+# only signals as predictor
+rm(panel, raw, cov, cov_long, n, macro); gc() # free some space before running model
+
+train <- dt[split == 'train']
+test <- dt[split == 'test']
+
+f1 <- reformulate(signals, response = 'top10') # returns top10 ~ *signal + signal + signal + ...*
+m1 <- glm(f1, data = train, family = binomial) # logistic reg on all osap signals
+
+summary(m1)
+
+# out-of-sample testing
+test[, p1 := predict(m1, newdata = test, type = 'response')]
+
+roc1 <- roc(test$top10, test$p1, quiet = TRUE)
+auc(roc1)
+plot(roc1, legacy.axes = TRUE, main = 'ROC curve, baseline logistic regression (test 2010-)')
+
+# lift table - share of actual top 10 % stocks in each predicted decile
+test[, dec1 := ceiling(10 * frank(p1, ties.method = 'first') / .N), by = yyyymm] # dec1 is decile number (1-10)
+lift <- test[, .(hit_rate = mean(top10)), by = dec1][order(dec1)] 
+lift[, lift := hit_rate / mean(test$top10)] # hit rate is how many from said decile is predicted to be in decile 10 (top 10 %), lift is how many times better than random prediction is
+lift
+# ^ we get a very good lift table - however, we include volatility as a signal
+# ^ volatile stocks can be picked by model for top decile, but are in turn also likely to perform worse due to volatility
+
+# 1. Do decile-10 stocks also crash more often?
+test[, bottom10 := as.integer(ret_fwd <= quantile(ret_fwd, 0.1)), by = yyyymm]
+test[, .(top10_rate = mean(top10), bottom10_rate = mean(bottom10), avg_ret = mean(ret_fwd)), by = dec1][order(dec1)]
+# ^ yes, they do
+
+# 2. Which signals drive the model?
+sort(coef(m1)[-1])
+# ^ volatility drives most. model rewards volatility, which is not fit for a trading strategy
