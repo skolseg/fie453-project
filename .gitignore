@@ -1,0 +1,56 @@
+# .gitignore template for R projects
+#
+# Copy everything in this file into a file called .gitignore (with the dot,
+# and no .txt) in the top folder of every new repository, and commit it first.
+#
+# Each line is a pattern: git will not track files that match it. Lines
+# starting with # are comments. Add lines of your own at the bottom for things
+# that belong to one project only, such as figures or tables your code writes.
+
+# R's session history and saved workspace, which hide what your code really does
+.Rhistory
+.RData
+.RDataTmp
+.Ruserdata
+
+# Secrets: passwords, API keys and tokens belong in .Renviron, never in git
+.Renviron
+.env
+
+# RStudio's and Positron's own settings and caches for this folder
+.Rproj.user/
+.positron/
+.vscode/
+
+# Package libraries installed inside the project (renv records the versions in renv.lock instead)
+renv/library/
+renv/staging/
+renv/local/
+
+# Rendered output and caches from Quarto and R Markdown, which rendering recreates
+.quarto/
+*_cache/
+*_files/
+/*.html
+
+# Files your operating system creates on its own
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Your own project's lines go below
+
+# Data: too large for git, and CRSP is licensed through WRDS and must not be shared.
+# Everyone recreates these by running the download and cleaning scripts.
+data/
+osap_files/
+osap_manual/
+*.csv
+*.parquet
+*.rds
+*.zip
+
+# Figures and tables the code writes (remove these lines if you want them in git,
+# for example so group members can see plots without running everything)
+figures/
+tables/
