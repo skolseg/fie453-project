@@ -93,7 +93,7 @@ dt[, mean(top10), by = yyyymm][, summary(V1)] # check: about 0.10 every month
 # ^ all around 0.1, everything is good
 
 # signal list exclusion and ranking ------------------------
-coverage <- sapply(signals, function(s) dt[yyyymm <= 199912, mean(!is.na(get(s)))]) # coverage in training period
+coverage <- sapply(signals, function(s) dt[yyyymm <= 200912, mean(!is.na(get(s)))]) # coverage in training period
 signals  <- names(coverage)[coverage >= 0.5] # keep signals with at least 50 % coverage
 setdiff(names(coverage), signals) # dropped signals
 
@@ -122,12 +122,7 @@ dt[is.na(sentiment), unique(yyyymm)]
 regime <- setdiff(regime, 'vix') # remove VIX from regime variables, starts too late
 
 # train-test-split -------------------------------------
-dt[, split := fifelse(yyyymm <= 200912, 'train', 'test')]
-
-# time-block folds for cross-validation
-train <- dt[split == 'train']
-train[, fold := cut(yyyymm %/% 100, breaks = 5, labels = FALSE)]
-train[, .(from = min(yyyymm), to = max(yyyymm)), by = fold]   # check the periods
+dt[, split := fifelse(yyyymm <= 200912, 'train', 'test')] # train 1977-2009, test 2010-
 
 # specifications of the split
 dt[, .(from   = min(yyyymm),
@@ -136,6 +131,10 @@ dt[, .(from   = min(yyyymm),
        years  = round(uniqueN(yyyymm) / 12, 1),
        rows   = .N),
    by = split][, share_rows := round(rows / sum(rows), 2)][]
+
+# time-block folds for cross-validation (training period only, test rows get NA)
+dt[split == 'train', fold := cut(yyyymm %/% 100, breaks = 5, labels = FALSE)]
+dt[split == 'train', .(from = min(yyyymm), to = max(yyyymm)), by = fold][order(fold)] # check the periods
 
 # standardizing regime variables ----------------------
 # turns every regime variable into " how many standard deviations away is it from normal level "
