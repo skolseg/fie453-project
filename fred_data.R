@@ -28,4 +28,9 @@ setorder(macro, yyyymm)
 regime <- setdiff(names(macro), 'yyyymm') # all macro variables
 macro[, (regime) := lapply(.SD, shift), .SDcols = regime] # only lagging regime macro variables, not yyyymm
 
+# forward-fill missing values
+setorder(macro, yyyymm)
+macro[, c('unrate', 'inflation', 'sentiment') := lapply(.SD, nafill, type = 'locf'),
+      .SDcols = c('unrate', 'inflation', 'sentiment')]
+
 fwrite(macro, 'data/macro.csv')
