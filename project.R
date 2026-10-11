@@ -75,6 +75,7 @@ panel[is.na(ret_fwd), .N] / nrow(panel) # share without a target
 
 # filter panel to >1977 (coverage from all signals) and has ret_fwd (our target)
 dt <- panel[yyyymm >= 197701 & !is.na(ret_fwd)]
+rm(panel) ; gc() # free up space, don't need panel anymore
 
 n <- dt[, .N, by = yyyymm] # no. of stocks each month
 n[, date := as.IDate(paste0(yyyymm, '01'), format = '%Y%m%d')] # turn yyyymm into proper date
@@ -96,8 +97,6 @@ dt[, mean(top10), by = yyyymm][, summary(V1)] # check: about 0.10 every month
 coverage <- sapply(signals, function(s) dt[yyyymm <= 200912, mean(!is.na(get(s)))]) # coverage in training period
 signals  <- names(coverage)[coverage >= 0.5] # keep signals with at least 50 % coverage
 setdiff(names(coverage), signals) # dropped signals
-
-raw <- copy(dt) # keep unranked version for XGBoost later
 
 rank_x <- function(x) {
   r <- frank(x, na.last = 'keep') / sum(!is.na(x)) - 0.5 # rank scaled -0.5..0.5
@@ -145,16 +144,46 @@ for (v in regime) {
   dt[, (v) := (get(v) - mu) / s] # apply to all rows, train and test
 }
 
+# tests
 dt[split == 'train', lapply(.SD, function(x) round(c(mean = mean(x), sd = sd(x)), 2)), .SDcols = regime]
 dt[split == 'test',  lapply(.SD, function(x) round(c(mean = mean(x), sd = sd(x)), 2)), .SDcols = regime]
+
+# drop highly correlated signals --------------------
+# only checking on training period (no look-ahead)
+# remove anything with corr >= 0.7 (rule of thumb)
+# avoid multicollinearity in models
+# remove redundancy, as well as free up ram space
+# if none is dropped, signals list has been changed
+
+set.seed(1)
+samp <- train[sample(.N, 200000), ..signals]
+C <- abs(cor(samp))
+diag(C) <- 0
+
+drop <- character(0)
+repeat {
+if (max(C) <= 0.7) break
+idx <- which(C == max(C), arr.ind = TRUE)[1, ]
+pair <- rownames(C)[idx]
+loser <- pair[which.min(coverage[pair])]        # keep the one with better coverage
+drop <- c(drop, loser)
+C <- C[setdiff(rownames(C), loser), setdiff(colnames(C), loser)]
+}
+
+drop                                  # which signals were removed
+signals <- setdiff(signals, drop)
+length(signals)
+
+rm(samp) ; gc()
 
 # model 1 --------------------------------------------
 # baseline logistic regression
 # only signals as predictor
-rm(panel, raw, cov, cov_long, n, macro); gc() # free some space before running model
+rm( cov, cov_long, n, macro); gc() # free some space before running model
 
 train <- dt[split == 'train']
 test <- dt[split == 'test']
+rm(dt) ; gc() # free up space, don't need dt anymore
 
 f1 <- reformulate(signals, response = 'top10') # returns top10 ~ *signal + signal + signal + ...*
 m1 <- glm(f1, data = train, family = binomial) # logistic reg on all osap signals
@@ -183,4 +212,46 @@ test[, .(top10_rate = mean(top10), bottom10_rate = mean(bottom10), avg_ret = mea
 
 # 2. Which signals drive the model?
 sort(coef(m1)[-1])
-# ^ volatility drives most. model rewards volatility, which is not fit for a trading strategy
+# ^ volatility drives most
+
+# model 1b) predict bottom 10 % as well, find difference
+train[, bottom10 := as.integer(ret_fwd <= quantile(ret_fwd, 0.1)), by = yyyymm]
+test[,  bottom10 := as.integer(ret_fwd <= quantile(ret_fwd, 0.1)), by = yyyymm]
+
+m1_bot <- glm(reformulate(signals, 'bottom10'), data = train, family = binomial,
+              model = FALSE, y = FALSE)
+
+test[, p1_bot := predict(m1_bot, newdata = test, type = 'response')]
+test[, score1 := p1 - p1_bot]     # high = more likely to end up at the top than at the bottom
+
+# same checks as before
+test[, dec_s := ceiling(10 * frank(score1, ties.method = 'first') / .N), by = yyyymm]
+test[, .(top10_rate = mean(top10), bottom10_rate = mean(bottom10), avg_ret = mean(ret_fwd)),
+     by = dec_s][order(dec_s)]
+
+
+# model 2 --------------------------------------------
+# logit reg including regime variables
+# interaction between signals and regime vars
+# dropping a lot of signals to control model more (RAM etc.)
+# creating a stress variable from select regime variables
+
+sig_small <- c('Mom12m', 'BM', 'GP', 'AssetGrowth', 'ShareIss1Y', 'MaxRet', 'Beta', 'DolVol')
+train[, stress := (credit_spread + unrate - sentiment) / 3]
+test[,  stress := (credit_spread + unrate - sentiment) / 3]
+train[, .(mean = mean(stress), sd = sd(stress))]          # check: mean 0
+
+f2 <- as.formula(paste('top10 ~ (', paste(sig_small, collapse = ' + '), ') * stress'))
+f2
+
+m2 <- glm(f2, data = train, family = binomial, model = FALSE, y = FALSE)
+summary(m2)
+# ^ 
+test[, p2 := predict(m2, newdata = test, type = 'response')]
+auc(test$top10, test$p2)
+
+# TODO:
+# drop signals to decrease RAM usage
+# value-weigh portfolios
+# include regime
+# use other models than logit
