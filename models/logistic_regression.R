@@ -1,7 +1,8 @@
 # ------------------------------------------------------------
-# Model 1
+# Model 1 and 2
 # Logistic regression
 # Predicting deciles with OSAP signals
+# Model 2 includes regime variables
 
 # ------------------------------------------------------------
 source('functions.R')
@@ -78,3 +79,20 @@ round(perf(ls_vw$ls), 3)
 
 ls_ew <- long_short(test, 'score1', weight = 'equal')
 round(perf(ls_ew$ls), 3)
+
+# regime-aware logit -------------------------------------
+# same logit, including regime variables interaction
+# creating one stress variable from select regime variables
+train[, stress := (credit_spread + unrate - sentiment) / 3]
+test[,  stress := (credit_spread + unrate - sentiment) / 3]
+train[, .(mean = mean(stress), sd = sd(stress))]          # check: mean 0
+
+f2 <- as.formula(paste('top10 ~ (', paste(sig_small, collapse = ' + '), ') * stress'))
+f2
+
+m2 <- glm(f2, data = train, family = binomial, model = FALSE, y = FALSE)
+stargazer(m1, m1_bot, m2, type = 'text')
+# ^ 
+test[, p2 := predict(m2, newdata = test, type = 'response')]
+auc(test$top10, test$p2)
+decile_table(test, 'p2')
