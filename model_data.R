@@ -58,7 +58,7 @@ ggplot(cov_long, aes(year, signal, fill = coverage)) +
 
 # CRSP sanity checks
 panel[ret_fwd < -1, .N]                          # should be 0 (can't lose more than 100%)
-panel[me <= 0, .N]                               # should be 0
+panel[me <= 0, .N]                               # should be 0 (can't have negative marketcap)
 panel[, quantile(ret_fwd, c(0, .001, .01, .5, .99, .999, 1), na.rm = TRUE)]   # extreme returns
 # ^ 0.1% shows highest return amongst the 0.1% worst returns (-65% ish), etc. - 100% shows the best return ever (2658% ish), 99.9% shows the highest return of the 99.9% highest (150%)
 panel[, .N, by = .(permno, yyyymm)][N > 1, .N]   # duplicate stock-months, should be 0
@@ -98,7 +98,7 @@ rank_x <- function(x) {
 # ^ if a stock has the worst BM one month, it gets a ranking of almost -0.5 (vice versa)
 # ^ this is to make outliers not have as big of an impact to the models
 
-dt[, (signals) := lapply(.SD, rank_x), by = yyyymm, .SDcols = signals]
+dt[, (signals) := lapply(.SD, rank_x), by = yyyymm, .SDcols = signals] # apply rank function to signals
 
 # regime variables -------------------------------------
 # VIX starts in 1990, sentiment starts in 1978
@@ -149,7 +149,7 @@ dt[split == 'test',  lapply(.SD, function(x) round(c(mean = mean(x), sd = sd(x))
 # if none is dropped, signals list has been changed
 
 set.seed(1)
-samp <- train[sample(.N, 200000), ..signals]
+samp <- dt[split == 'train'][sample(.N, 200000), ..signals]
 C <- abs(cor(samp))
 diag(C) <- 0
 
@@ -169,9 +169,10 @@ length(signals)
 
 rm(samp) ; gc()
 
-rm( cov, cov_long, n, macro); gc() # free some space before running model
+rm( cov, cov_long, n, macro); gc() # free some space
 
 # save modelling data ----------------------------------
-keep <- c('permno', 'yyyymm', 'split', 'fold', 'ret_fwd', 'top10', 'me', signals, regime) # ADDED
-fwrite(dt[, ..keep], 'data/model_data.csv') # ADDED
-saveRDS(list(signals = signals, regime = regime), 'data/model_vars.rds') # ADDED: final signal and regime lists
+keep <- c('permno', 'yyyymm', 'split', 'fold', 'ret_fwd', 'top10', 'me', signals, regime)
+fwrite(dt[, ..keep], 'data/model_data.csv')
+saveRDS(list(signals = signals, regime = regime), 'data/model_vars.rds')
+rm(list = ls()); gc() # remove all objects and free memory
