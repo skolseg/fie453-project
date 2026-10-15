@@ -89,7 +89,12 @@ dt[, mean(top10), by = yyyymm][, summary(V1)] # check: about 0.10 every month
 # investable -----------------------------------------------
 # flag stocks a fund could realistically trade
 # price > 5 USD, mcap above NYSE 20th percentile, measured at month t (no look-ahead)
+dt[, me_p20 := quantile(me[exch == 'N'], 0.2, na.rm = TRUE), by = yyyymm]
+dt[, investable := as.integer(!is.na(me) & !is.na(prc) & prc >= 5 & me >= me_p20)]
+dt[, me_p20 := NULL]
 
+dt[, .(share_rows = mean(investable)), by = .(period = fifelse(yyyymm <= 200912, 'train', 'test'))] # share of stock-months kept
+dt[, .(share_mcap = sum(me[investable == 1], na.rm = TRUE) / sum(me, na.rm = TRUE))]               # share of market value kept
 
 # signal list exclusion and ranking ------------------------
 coverage <- sapply(signals, function(s) dt[yyyymm <= 200912, mean(!is.na(get(s)))]) # coverage in training period
@@ -177,7 +182,7 @@ rm(samp) ; gc()
 rm( cov, cov_long, n, macro); gc() # free some space
 
 # save modelling data ----------------------------------
-keep <- c('permno', 'yyyymm', 'split', 'fold', 'ret_fwd', 'top10', 'me', signals, regime)
+keep <- c('permno', 'yyyymm', 'split', 'fold', 'ret_fwd', 'top10', 'me', 'investable', signals, regime)
 fwrite(dt[, ..keep], 'data/model_data.csv')
 saveRDS(list(signals = signals, regime = regime), 'data/model_vars.rds')
 rm(list = ls()); gc() # remove all objects and free memory
