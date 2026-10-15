@@ -40,7 +40,7 @@ X_test  <- model.matrix(f3, data = test)[, -1]
 dim(X_train) # rows x 49 columns
 
 # model 3a: top 10 % --------------------------------------
-# cross-validation over lambda on the 5 time-block folds (Topic 5, slide 38)
+# cross-validation over lambda on the 5 time-block folds
 set.seed(1)
 cv3_top <- cv.glmnet(X_train, train$top10, family = 'binomial', alpha = 0.5,
                      foldid = train$fold, type.measure = 'auc', nlambda = 30)
@@ -53,20 +53,20 @@ cv3_bot <- cv.glmnet(X_train, train$bottom10, family = 'binomial', alpha = 0.5,
 plot(cv3_bot, sign.lambda = 1)
 
 # out-of-sample predictions ---------------------------------
-test[, p3_top := as.numeric(predict(cv3_top, newx = X_test, s = 'lambda.1se', type = 'response'))]
-test[, p3_bot := as.numeric(predict(cv3_bot, newx = X_test, s = 'lambda.1se', type = 'response'))]
+test[, p3_top := as.numeric(predict(cv3_top, newx = X_test, s = 'lambda.min', type = 'response'))]
+test[, p3_bot := as.numeric(predict(cv3_bot, newx = X_test, s = 'lambda.min', type = 'response'))]
 test[, score3 := p3_top - p3_bot] # high = more likely to end up at the top than at the bottom
 
 rm(X_train, X_test) ; gc() # free memory
 
 # which effects survived -------------------------------------
 coef_table <- function(cv) {
-  b <- coef(cv, s = 'lambda.1se')
+  b <- coef(cv, s = 'lambda.min')
   data.table(term = rownames(b), coef = as.numeric(b))[term != '(Intercept)']
 }
 b_top <- coef_table(cv3_top)
 b_bot <- coef_table(cv3_bot)
-# ^ for both top and bottom prediction with elastic, no regime variables survive (using lambda.1se)
+# ^ for both top and bottom prediction with elastic, no regime variables survive (using lambda.1se) update: changed to .min!
 
 b <- merge(b_top, b_bot, by = 'term', suffixes = c('_top', '_bot'))
 b[, top_minus_bottom := coef_top - coef_bot] # effect on the score (signed signals: + agrees with research)
