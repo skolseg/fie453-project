@@ -86,6 +86,11 @@ dt[, top10 := as.integer(ret_fwd >= quantile(ret_fwd, 0.9)), by = yyyymm] # 1 if
 dt[, mean(top10), by = yyyymm][, summary(V1)] # check: about 0.10 every month
 # ^ all around 0.1, everything is good
 
+# investable -----------------------------------------------
+# flag stocks a fund could realistically trade
+# price > 5 USD, mcap above NYSE 20th percentile, measured at month t (no look-ahead)
+
+
 # signal list exclusion and ranking ------------------------
 coverage <- sapply(signals, function(s) dt[yyyymm <= 200912, mean(!is.na(get(s)))]) # coverage in training period
 signals  <- names(coverage)[coverage >= 0.5] # keep signals with at least 50 % coverage
