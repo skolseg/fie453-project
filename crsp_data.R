@@ -33,5 +33,5 @@ crsp[, ret_fwd := shift(mthret, type = 'lead'), by = permno] # next monthly retu
 crsp[next_ym != fifelse(yyyymm %% 100 == 12, yyyymm + 89L, yyyymm + 1L), ret_fwd := NA] # only gives next mnth ret if there is an actual next month in data
 
 # keep only necessary columns, save as .csv
-crsp <- crsp[, .(permno, yyyymm, ret = mthret, ret_fwd, me, prc = abs(mthprc))] # price can be negative if estimate, return absolute number
+crsp <- crsp[, .(permno, yyyymm, ret = mthret, ret_fwd, me, prc = abs(mthprc), exch = primaryexch)] # price can be negative if estimate, return absolute number
 fwrite(crsp, 'data/crsp_clean.csv')
